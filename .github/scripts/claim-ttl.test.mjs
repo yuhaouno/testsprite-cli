@@ -12,9 +12,14 @@ const claim = (login = 'contributor', hours = 96) => ({
   assignee: { login },
   created_at: assignedAt(hours),
 });
-const linkedPr = (login = 'contributor', state = 'open', draft = false) => ({
+const linkedPr = (
+  login = 'contributor',
+  state = 'open',
+  draft = false,
+  body = 'Adds the thing.\n\nCloses #42',
+) => ({
   event: 'cross-referenced',
-  source: { issue: { pull_request: {}, state, draft, user: { login } } },
+  source: { issue: { pull_request: {}, state, draft, user: { login }, body } },
 });
 
 function harness({
@@ -209,6 +214,27 @@ test('the sweep requests all open assigned issues and skips pull requests', asyn
     h.of('removeAssignees').map(args => args.issue_number),
     [42],
   );
+});
+
+test('the PR must reference this issue with a gate keyword to protect the claim', async () => {
+  for (const body of ['Part of #42', 'refs: #42', 'Related to #42', 'fixes #42 and #7']) {
+    const h = harness({ events: { 42: [claim(), linkedPr('contributor', 'open', false, body)] } });
+    await h.execute();
+    assert.deepEqual(h.writes(), [], body);
+  }
+  for (const body of ['See #42 for context', 'Closes #420', 'Closes #7', '']) {
+    const h = harness({ events: { 42: [claim(), linkedPr('contributor', 'open', false, body)] } });
+    await h.execute();
+    assert.equal(h.of('removeAssignees').length, 1, body);
+  }
+});
+
+test('a linked PR without a body in the timeline is treated as linked (fail safe)', async () => {
+  const h = harness({
+    events: { 42: [claim(), linkedPr('contributor', 'open', false, null)] },
+  });
+  await h.execute();
+  assert.deepEqual(h.writes(), []);
 });
 
 test('a linked PR by another author or a closed PR does not protect the claim', async () => {

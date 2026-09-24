@@ -24,6 +24,8 @@ async function runComment({
   assigned = [],
   body = '/assign',
   enforce = false,
+  // Repository permission returned for the commenter; 'error' makes the lookup throw.
+  permission = 'read',
 } = {}) {
   const calls = [];
   const issues = {
@@ -37,7 +39,13 @@ async function runComment({
     removeLabel: async args => calls.push(['removeLabel', args]),
     listForRepo: () => {},
   };
-  const github = { paginate: async () => assigned, rest: { issues } };
+  const repos = {
+    getCollaboratorPermissionLevel: async () => {
+      if (permission === 'error') throw new Error('permission lookup failed');
+      return { data: { permission } };
+    },
+  };
+  const github = { paginate: async () => assigned, rest: { issues, repos } };
   const context = {
     repo: { owner: 'TestSprite', repo: 'testsprite-cli' },
     payload: {
@@ -88,8 +96,9 @@ test('issue claims require triage acceptance while existing claims remain usable
     );
   }
 
+  // If the permission lookup fails, the payload association is the fallback.
   for (const association of ['OWNER', 'MEMBER', 'COLLABORATOR']) {
-    const calls = await runComment({ association });
+    const calls = await runComment({ association, permission: 'error' });
     assert.equal(callsOf(calls, 'addAssignees').length, 1);
     assert.match(callsOf(calls, 'createComment')[0].body, /Assigned to @contributor/);
   }
@@ -113,4 +122,29 @@ test('the enforced cap refuses a fourth accepted claim from a non-maintainer', a
   assert.equal(callsOf(calls, 'addAssignees').length, 0);
   assert.equal(callsOf(calls, 'addLabels').length, 0);
   assert.match(callsOf(calls, 'createComment')[0].body, /at the 3-issue limit/);
+});
+
+test('maintainers are recognised by repository permission, not only by association', async () => {
+  // A maintainer with private org membership arrives as CONTRIBUTOR.
+  for (const permission of ['write', 'maintain', 'admin']) {
+    const calls = await runComment({ association: 'CONTRIBUTOR', permission });
+    assert.equal(callsOf(calls, 'addAssignees').length, 1);
+  }
+  for (const permission of ['read', 'triage']) {
+    const calls = await runComment({ association: 'CONTRIBUTOR', permission });
+    assert.equal(callsOf(calls, 'addAssignees').length, 0);
+    assert.match(callsOf(calls, 'createComment')[0].body, /hasn't been accepted/);
+  }
+  const fallback = await runComment({ association: 'CONTRIBUTOR', permission: 'error' });
+  assert.equal(callsOf(fallback, 'addAssignees').length, 0);
+});
+
+test('the enforced cap does not apply to maintainers', async () => {
+  const calls = await runComment({
+    enforce: true,
+    permission: 'write',
+    assigned: [1, 2, 3].map(number => ({ number, title: 'Claimed issue' })),
+  });
+  assert.equal(callsOf(calls, 'addAssignees').length, 1);
+  assert.doesNotMatch(callsOf(calls, 'createComment')[0].body, /at the 3-issue limit/);
 });

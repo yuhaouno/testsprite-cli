@@ -43,8 +43,9 @@ Discussions**, so the issue tracker stays a clean, actionable list.
      `Resolve`/`Resolved`, and `Ref`/`Reference`/`References` (case-insensitive,
      with an optional colon before `#123`).
 - **Claim lifetime:** the bot warns after 72 hours and releases a claim after
-  96 hours unless you have an open PR that links the issue. You can `/assign`
-  again if the issue is still free.
+  96 hours unless you have an open PR whose description references the issue
+  as in step 4 (a bare `#123` mention does not count). You can `/assign` again
+  if the issue is still free.
 - **PR gate:** a bot checks every community PR whose title does not start with
   `docs` for a referenced issue **assigned to the PR author**. PRs that don't
   meet this get the `needs-issue` label and a failing `gate` check, and are

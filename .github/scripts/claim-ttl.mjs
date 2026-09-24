@@ -9,25 +9,36 @@ function latestAssignment(events, login) {
     .sort((a, b) => b.getTime() - a.getTime())[0];
 }
 
-function hasOpenLinkedPr(events, login) {
-  return events.some(
-    event =>
-      event.event === 'cross-referenced' &&
-      event.source?.issue?.pull_request &&
-      event.source.issue.state === 'open' &&
-      event.source.issue.user?.login === login,
-  );
+// Same keywords the PR gate (pr-triage.yml) accepts as an issue reference.
+const ISSUE_REFERENCE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|part\s+of|refs?|references?|related\s+to)\s*:?\s+#(\d+)/gi;
+
+function referencesIssue(body, issueNumber) {
+  return [...body.matchAll(ISSUE_REFERENCE)].some(match => Number(match[1]) === issueNumber);
+}
+
+// An open PR by the assignee keeps the claim alive only if its description
+// links the issue the way the PR gate requires; a bare `#N` mention does not.
+// If the timeline omits the PR body, fail safe and treat the PR as linked.
+function hasOpenLinkedPr(events, login, issueNumber) {
+  return events.some(event => {
+    const pr = event.source?.issue;
+    if (event.event !== 'cross-referenced' || !pr?.pull_request) return false;
+    if (pr.state !== 'open' || pr.user?.login !== login) return false;
+    return typeof pr.body !== 'string' || referencesIssue(pr.body, issueNumber);
+  });
 }
 
 function readHours(value, fallback) {
   return value === undefined ? fallback : Number(value);
 }
 
-export function evaluateClaim({ events, login, now, since, warn, ttl }) {
+export function evaluateClaim({ events, login, issueNumber, now, since, warn, ttl }) {
   const assignedAt = latestAssignment(events, login);
   if (!assignedAt) return { action: 'skip', reason: 'no-assignment-event' };
   if (assignedAt < since) return { action: 'skip', reason: 'grandfathered' };
-  if (hasOpenLinkedPr(events, login)) return { action: 'skip', reason: 'linked-open-pr' };
+  if (hasOpenLinkedPr(events, login, issueNumber))
+    return { action: 'skip', reason: 'linked-open-pr' };
 
   const age = (now.getTime() - assignedAt.getTime()) / HOUR_MS;
   if (age < warn) return { action: 'skip', reason: 'under-warning-age' };
@@ -115,7 +126,15 @@ export async function run({ github, context, core, env, now = new Date() }) {
           issue_number: issue.number,
           per_page: 100,
         });
-        const evaluation = evaluateClaim({ events, login, now, since, warn, ttl });
+        const evaluation = evaluateClaim({
+          events,
+          login,
+          issueNumber: issue.number,
+          now,
+          since,
+          warn,
+          ttl,
+        });
         if (evaluation.action === 'skip') {
           skip(evaluation.reason);
           continue;
