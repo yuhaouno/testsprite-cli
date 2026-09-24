@@ -25,9 +25,8 @@ permissions:
 
 env:
   SLOT_CAP: '3'
-  # D2: the cap ships ARMED, NOT ENFORCED. report-only by default — assigns anyway,
-  # just surfaces slot usage. Flip to 'true' if an AI-PR flood appears.
-  ENFORCE_CAP: 'false'
+  # D2: the three-issue cap is enforced for new claims.
+  ENFORCE_CAP: 'true'
 
 jobs:
   triage:
@@ -211,6 +210,21 @@ jobs:
 
             const already = assigned.some(i => i.number === issue);
             const atCap = assigned.length >= cap;
+
+            if (wantsAssign && !already) {
+              const ACCEPT_LABELS = ['accepted', 'good first issue', 'help wanted'];
+              const issueLabelNames = (context.payload.issue.labels || []).map(l => l.name);
+              const isAccepted = issueLabelNames.some(name => ACCEPT_LABELS.includes(name));
+              const assoc = context.payload.comment.author_association;
+              const isMaintainer = ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc);
+              if (!isAccepted && !isMaintainer) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issue,
+                  body: `Thanks for the interest, @${user}! This issue hasn't been accepted for implementation yet — `
+                      + `see the triage comment (a maintainer will label it \`accepted\` once it is). `
+                      + `Feel free to check back, or ping us on Discord if it's been quiet.` });
+                return;
+              }
+            }
 
             if (atCap && enforce && !already) {
               await github.rest.issues.createComment({ owner, repo, issue_number: issue,
