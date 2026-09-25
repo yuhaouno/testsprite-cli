@@ -12097,6 +12097,7 @@ describe('runTestRun / runTestRerun — dashboard line on the queued-run output'
 
 // #186: advisory failures stay non-fatal, but are diagnosable under --debug.
 describe.each(['code', 'plan'] as const)('duplicate-name debug diagnostics (%s)', source => {
+  /** Run either create path with a controlled advisory response and capture both output streams. */
   async function create({
     debug = false,
     verbose = false,
