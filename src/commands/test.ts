@@ -1132,6 +1132,9 @@ function assertChainedRunKeyFits(
   }
 }
 
+/** Short deadline for the advisory duplicate-name lookup (5 s). */
+const DUP_NAME_ADVISORY_TIMEOUT_MS = 5_000;
+
 /**
  * B3 / Fix 4: best-effort duplicate-name advisory shared by `runCreate`
  * and `runCreateFromPlan`. One-page lookup (pageSize=100) — not
@@ -1141,9 +1144,6 @@ function assertChainedRunKeyFits(
  * Skip when `projectId` or `name` is absent (e.g. plan not yet parsed)
  * or when the caller is in dry-run mode.
  */
-/** Short deadline for the advisory duplicate-name lookup (5 s). */
-const DUP_NAME_ADVISORY_TIMEOUT_MS = 5_000;
-
 async function emitDupNameAdvisoryIfNeeded(
   client: HttpClient,
   projectId: string | undefined,
